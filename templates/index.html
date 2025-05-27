@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Прогноз погоды</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background: linear-gradient(to right, #74ebd5, #acb6e5);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .card {
+      max-width: 500px;
+      width: 100%;
+      padding: 30px;
+      border-radius: 20px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.2);
+      background-color: white;
+      position: relative;
+    }
+    .city-remember {
+      font-size: 0.9rem;
+      color: #666;
+    }
+    #loading {
+      display: none;
+      text-align: center;
+    }
+    .autocomplete-suggestions {
+      background: #fff;
+      border: 1px solid #ddd;
+      max-height: 180px;
+      overflow-y: auto;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      width: 100%;
+      z-index: 1000;
+      border-radius: 0 0 10px 10px;
+      animation: fadeIn 0.2s ease-in-out;
+    }
+    .autocomplete-suggestions div {
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    .autocomplete-suggestions div:hover,
+    .autocomplete-suggestions .selected {
+      background-color: #f0f0f0;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h3 class="text-center mb-4">Прогноз погоды</h3>
+
+    {% if remembered_city %}
+      <div class="mb-3 city-remember">
+        Вы ранее смотрели погоду в городе: <strong>{{ remembered_city }}</strong>
+        <form method="POST" class="mt-2">
+          <input type="hidden" name="city" value="{{ remembered_city }}">
+          <button class="btn btn-outline-primary btn-sm" type="submit">Показать снова</button>
+        </form>
+      </div>
+    {% endif %}
+
+    <form method="POST" class="mb-4" id="weather-form" autocomplete="off">
+      <div class="input-group position-relative">
+        <input type="text" class="form-control" name="city" id="city-input" placeholder="Введите город" required>
+        <button class="btn btn-primary" type="submit">Узнать</button>
+        <div id="suggestions" class="autocomplete-suggestions"></div>
+      </div>
+    </form>
+
+    {% if weather %}
+      {% if weather.error %}
+        <div class="alert alert-danger text-center">{{ weather.error }}</div>
+      {% else %}
+        <div class="alert alert-info text-center">
+  <h5 class="mb-3">Погода в {{ weather.city }}</h5>
+  <p>🌤 <strong>{{ weather.description }}</strong></p>
+  <p>🌡 Температура: <strong>{{ weather.temperature }} °C</strong></p>
+  <p>💨 Скорость ветра: <strong>{{ weather.windspeed }} км/ч</strong></p>
+  <p>🌍 Страна: {{ weather.country }}</p>
+  <p>📍 Координаты: {{ weather.latitude }}, {{ weather.longitude }}</p>
+  <p>🕒 Время измерения: {{ weather.time }}</p>
+</div>
+
+      {% endif %}
+    {% endif %}
+
+    <div id="loading">
+      <div class="spinner-border text-primary mt-3" role="status">
+        <span class="visually-hidden">Загрузка...</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById("weather-form");
+    const loading = document.getElementById("loading");
+    const input = document.getElementById("city-input");
+    const suggestionsBox = document.getElementById("suggestions");
+
+    let selectedIndex = -1;
+
+    form.addEventListener("submit", () => {
+      loading.style.display = "block";
+    });
+
+    input.addEventListener("input", async () => {
+      const value = input.value.trim();
+      suggestionsBox.innerHTML = "";
+      selectedIndex = -1;
+
+      if (value.length < 2) return;
+
+      try {
+        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${value}&count=5&language=ru`);
+        const data = await res.json();
+        if (!data.results) return;
+
+        data.results.forEach((city, i) => {
+          const div = document.createElement("div");
+          div.textContent = `${city.name}, ${city.country}`;
+          div.addEventListener("click", () => {
+            input.value = city.name;
+            suggestionsBox.innerHTML = "";
+          });
+          suggestionsBox.appendChild(div);
+        });
+      } catch (err) {
+        console.error("Ошибка автодополнения:", err);
+      }
+    });
+
+    document.addEventListener("click", e => {
+      if (!form.contains(e.target)) {
+        suggestionsBox.innerHTML = "";
+      }
+    });
+
+    input.addEventListener("keydown", e => {
+      const items = suggestionsBox.querySelectorAll("div");
+      if (!items.length) return;
+
+      if (e.key === "ArrowDown") {
+        selectedIndex = (selectedIndex + 1) % items.length;
+        updateHighlight(items);
+      } else if (e.key === "ArrowUp") {
+        selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+        updateHighlight(items);
+      } else if (e.key === "Enter") {
+        if (selectedIndex >= 0) {
+          e.preventDefault();
+          input.value = items[selectedIndex].textContent.split(",")[0];
+          suggestionsBox.innerHTML = "";
+        }
+      }
+    });
+
+    function updateHighlight(items) {
+      items.forEach((el, idx) => {
+        el.classList.toggle("selected", idx === selectedIndex);
+      });
+    }
+
+    // Autofocus
+    window.onload = () => input.focus();
+  </script>
+</body>
+</html>
